@@ -1,0 +1,53 @@
+# Codex Session Manager (codex-session)
+
+A lightweight companion CLI for [OpenAI Codex](../codex) that lets you browse, resume, and prune recorded Codex sessions locally. It replicates the native Codex resume picker experience so you can manage history from any terminal.
+
+## Features
+
+- 🚀 Launches into a full-screen TUI by default: select with arrow keys or `j`/`k`, filter live with `/`, resume with `Enter`.
+- 🔎 Searches every session under `~/.codex` (or a custom `CODEX_HOME`).
+- 🗑️ Deletes the highlighted session via `dd`, with a confirmation dialog.
+- 🧰 Fall back to subcommands (`list`, `resume`, `info`, `delete`) for scripting or automation.
+
+## Getting Started
+
+```bash
+cargo run --release
+```
+
+The default command launches the TUI. Use the flags below to fine-tune behavior (e.g. resume non-interactively or target a specific Codex binary):
+
+```bash
+# List sessions in table form
+cargo run -- list --all
+
+# Resume the most recent rollout directly
+cargo run -- resume --last
+
+# Point to a custom Codex binary when resuming
+cargo run -- --codex-bin ./codex-dev
+```
+
+Environment variables:
+
+- `CODEX_HOME`: override the location of the Codex state directory (defaults to `~/.codex`).
+
+## Keyboard shortcuts (TUI)
+
+| Key            | Action                                |
+|----------------|---------------------------------------|
+| `↑` / `k`      | Move selection up                     |
+| `↓` / `j`      | Move selection down                   |
+| `/`            | Start filtering (type to search)      |
+| `Enter`        | Resume the highlighted session        |
+| `dd`           | Delete highlighted session (confirm)  |
+| `Esc` / `q`    | Exit current mode / quit               |
+
+## Development
+
+This crate reuses the Codex protocol definitions directly. Make sure you have the sibling `codex` repository checked out so the `codex-protocol` path dependency resolves.
+
+```bash
+cargo fmt
+cargo check
+```
