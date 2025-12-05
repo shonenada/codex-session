@@ -46,6 +46,25 @@ Environment variables:
 | `Ctrl+C`       | Quit immediately                      |
 | `Esc` / `q`    | Exit current mode / quit               |
 
+### Command mode
+
+Command mode gives you Vim-style control over extra actions. The first supported command is `:export <path>`, which writes the current session history in different formats based on the file extension:
+
+| Extension | Output                                                                 |
+|-----------|-------------------------------------------------------------------------|
+| `.jsonl`  | Exact copy of the original rollout JSONL file.                          |
+| `.json`   | Structured JSON array of `{ role, content }` chat entries.              |
+| `.pdf`    | Rendered Markdown transcript saved to a PDF (one page per ~40 lines).   |
+| anything else | Markdown transcript (same text shown in the TUI).                  |
+
+Example:
+
+```
+:export ~/Desktop/session.json
+```
+
+The command status is shown on the bottom status bar after each export.
+
 ## Development
 
 This crate reuses the Codex protocol definitions directly. Make sure you have the sibling `codex` repository checked out so the `codex-protocol` path dependency resolves.
