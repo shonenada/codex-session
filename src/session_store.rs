@@ -5,11 +5,14 @@ use codex_protocol::protocol::{
     EventMsg, RolloutItem, RolloutLine, SessionMetaLine, SessionSource,
 };
 use owo_colors::OwoColorize;
+use printpdf::{BuiltinFont, Mm, PdfDocument};
 use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Reverse;
 use std::fs;
 use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -233,6 +236,126 @@ pub fn resolve_session_path(codex_home: &Path, query: &str) -> Result<PathBuf> {
     Err(SessionError::NotFound.into())
 }
 
+pub fn export_session_chat(source: &Path, target: &Path) -> Result<()> {
+    let is_jsonl = target
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("jsonl"))
+        .unwrap_or(false);
+    let is_json = target
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+    let is_pdf = target
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if let Some(parent) = target.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("unable to create export directory {parent:?}"))?;
+    }
+
+    if is_jsonl {
+        fs::copy(source, target)
+            .with_context(|| format!("failed to copy session to {target:?}"))?;
+        return Ok(());
+    }
+
+    let (meta_line, entries) = read_session_entries(source)?;
+
+    if is_json {
+        let writer = BufWriter::new(
+            File::create(target)
+                .with_context(|| format!("failed to create export file {target:?}"))?,
+        );
+        serde_json::to_writer_pretty(writer, &entries)?;
+        return Ok(());
+    }
+
+    if is_pdf {
+        let markdown = render_markdown(meta_line.as_ref(), &entries);
+        export_markdown_pdf(&markdown, target)?;
+        return Ok(());
+    }
+
+    let markdown = render_markdown(meta_line.as_ref(), &entries);
+    let mut writer = BufWriter::new(
+        File::create(target).with_context(|| format!("failed to create export file {target:?}"))?,
+    );
+    writer.write_all(markdown.as_bytes())?;
+    writer.flush()?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct ChatEntry {
+    role: String,
+    content: String,
+}
+
+fn read_session_entries(source: &Path) -> Result<(Option<SessionMetaLine>, Vec<ChatEntry>)> {
+    let file =
+        File::open(source).with_context(|| format!("failed to open session file {source:?}"))?;
+    let reader = BufReader::new(file);
+    let mut meta_line: Option<SessionMetaLine> = None;
+    let mut entries = Vec::new();
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(rollout_line) = serde_json::from_str::<RolloutLine>(trimmed) else {
+            continue;
+        };
+        match rollout_line.item {
+            RolloutItem::SessionMeta(meta) => {
+                if meta_line.is_none() {
+                    meta_line = Some(meta);
+                }
+            }
+            RolloutItem::ResponseItem(item) => {
+                if let ResponseItem::Message { role, content, .. } = item {
+                    let text = flatten_content(&content);
+                    if !text.trim().is_empty() {
+                        entries.push(ChatEntry {
+                            role,
+                            content: text,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok((meta_line, entries))
+}
+
+fn render_markdown(meta_line: Option<&SessionMetaLine>, entries: &[ChatEntry]) -> String {
+    let mut buf = String::new();
+    if let Some(meta) = meta_line {
+        buf.push_str(&format!("# Session {}\n\n", meta.meta.id));
+        buf.push_str(&format!("- started: {}\n", meta.meta.timestamp));
+        buf.push_str(&format!("- cwd: {}\n", meta.meta.cwd.display()));
+        if let Some(provider) = meta.meta.model_provider.as_deref() {
+            buf.push_str(&format!("- provider: {}\n", provider));
+        }
+        buf.push_str("\n");
+    }
+    for entry in entries {
+        if entry.content.trim().is_empty() {
+            continue;
+        }
+        buf.push_str(&format!(
+            "**{}**\n{}\n\n",
+            entry.role.to_uppercase(),
+            entry.content.trim()
+        ));
+    }
+    buf
+}
+
 fn summarize_session(path: &Path) -> Result<Option<SessionSummary>> {
     let summary = read_head_summary(path, HEAD_RECORD_LIMIT)?;
     if !summary.saw_session_meta || !summary.saw_user_event {
@@ -381,6 +504,27 @@ fn preview_from_response_item(item: ResponseItem) -> Option<String> {
     }
 }
 
+fn flatten_content(content: &[ContentItem]) -> String {
+    let mut buf = String::new();
+    for entry in content {
+        match entry {
+            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                if !buf.is_empty() {
+                    buf.push_str("\n");
+                }
+                buf.push_str(text);
+            }
+            ContentItem::InputImage { image_url } => {
+                if !buf.is_empty() {
+                    buf.push_str("\n");
+                }
+                buf.push_str(&format!("[image: {image_url}]"));
+            }
+        }
+    }
+    buf
+}
+
 fn is_session_prefix(text: &str) -> bool {
     let trimmed = text.trim_start();
     let lowered = trimmed.to_ascii_lowercase();
@@ -484,4 +628,33 @@ fn paths_match(a: &Path, b: &Path) -> bool {
         (Ok(ca), Ok(cb)) => ca == cb,
         _ => a == b,
     }
+}
+
+fn export_markdown_pdf(markdown: &str, target: &Path) -> Result<()> {
+    let (doc, page, layer) = PdfDocument::new("Codex Session", Mm(210.0), Mm(297.0), "Layer 1");
+    let font = doc.add_builtin_font(BuiltinFont::Helvetica)?;
+    let mut current_page = page;
+    let mut current_layer = doc.get_page(current_page).get_layer(layer);
+    let mut y_mm = 280.0;
+    let left_margin = 15.0;
+    let font_size = 12.0;
+    let line_height_mm = font_size * 1.4 * 0.35277777;
+
+    for line in markdown.lines() {
+        if y_mm < 20.0 {
+            let (new_page, new_layer) = doc.add_page(Mm(210.0), Mm(297.0), "Layer 1");
+            current_page = new_page;
+            current_layer = doc.get_page(current_page).get_layer(new_layer);
+            y_mm = 280.0;
+        }
+        current_layer.use_text(line, font_size, Mm(left_margin), Mm(y_mm), &font);
+        y_mm -= line_height_mm;
+    }
+
+    let mut writer = BufWriter::new(
+        File::create(target).with_context(|| format!("failed to create export file {target:?}"))?,
+    );
+    doc.save(&mut writer)?;
+    writer.flush()?;
+    Ok(())
 }

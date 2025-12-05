@@ -1,4 +1,5 @@
 use std::io;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -14,7 +15,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Row, Table};
 
-use crate::session_store::SessionSummary;
+use crate::session_store::{SessionSummary, export_session_chat};
 
 const DELETE_SEQUENCE_TIMEOUT: Duration = Duration::from_millis(600);
 
@@ -62,6 +63,7 @@ pub fn run(sessions: Vec<SessionSummary>) -> Result<Option<SessionSummary>> {
 enum Mode {
     Normal,
     Search,
+    Command,
     ConfirmDelete,
 }
 
@@ -70,6 +72,7 @@ struct App {
     filtered: Vec<usize>,
     selected: usize,
     query: String,
+    command: String,
     mode: Mode,
     delete_primed_at: Option<Instant>,
     status: Option<String>,
@@ -88,6 +91,7 @@ impl App {
             filtered: Vec::new(),
             selected: 0,
             query: String::new(),
+            command: String::new(),
             mode: Mode::Normal,
             delete_primed_at: None,
             status: None,
@@ -146,12 +150,13 @@ impl App {
 
         let title = Line::from(vec![
             Span::styled("Codex Sessions", Style::default().fg(Color::Cyan)),
-            Span::raw("  (enter=resume, /=search, dd=delete, q=quit)"),
+            Span::raw("  (enter=resume, /=search, :export PATH, dd=delete, q=quit)"),
         ]);
         frame.render_widget(title, layout[0]);
 
         let search_prompt = match self.mode {
             Mode::Search => format!("/{}", self.query),
+            Mode::Command => format!(":{}", self.command),
             _ => format!("{} sessions", self.filtered.len()),
         };
         frame.render_widget(Line::from(search_prompt), layout[1]);
@@ -230,9 +235,13 @@ impl App {
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<AppAction> {
         self.status = None;
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            return Ok(AppAction::Quit);
+        }
         match self.mode {
             Mode::Normal => self.handle_normal_mode(key),
             Mode::Search => self.handle_search_mode(key),
+            Mode::Command => self.handle_command_mode(key),
             Mode::ConfirmDelete => self.handle_confirm_mode(key),
         }
     }
@@ -252,6 +261,12 @@ impl App {
                 self.mode = Mode::Search;
                 self.query.clear();
                 self.apply_filter();
+                Ok(AppAction::None)
+            }
+            KeyCode::Char(':') => {
+                self.mode = Mode::Command;
+                self.command.clear();
+                self.delete_primed_at = None;
                 Ok(AppAction::None)
             }
             KeyCode::Enter => {
@@ -312,6 +327,31 @@ impl App {
         Ok(AppAction::None)
     }
 
+    fn handle_command_mode(&mut self, key: KeyEvent) -> Result<AppAction> {
+        match key.code {
+            KeyCode::Esc => {
+                self.command.clear();
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Enter => {
+                let command = self.command.trim().to_string();
+                self.execute_command(&command)?;
+                self.command.clear();
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Backspace => {
+                self.command.pop();
+            }
+            KeyCode::Char(c) => {
+                if !key.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.command.push(c);
+                }
+            }
+            _ => {}
+        }
+        Ok(AppAction::None)
+    }
+
     fn handle_confirm_mode(&mut self, key: KeyEvent) -> Result<AppAction> {
         match key.code {
             KeyCode::Char('y') => {
@@ -354,6 +394,32 @@ impl App {
         self.filtered
             .get(self.selected)
             .and_then(|&idx| self.sessions.get(idx))
+    }
+
+    fn execute_command(&mut self, command: &str) -> Result<()> {
+        if command.is_empty() {
+            return Ok(());
+        }
+        if let Some(rest) = command.strip_prefix("export") {
+            let path = rest.trim();
+            if path.is_empty() {
+                self.status = Some(String::from("usage: :export <file_path>"));
+            } else if let Some(session) = self.current_session() {
+                let dest = PathBuf::from(path);
+                match export_session_chat(&session.path, &dest) {
+                    Ok(_) => {
+                        self.status =
+                            Some(format!("Exported {} to {}", session.id, dest.display()));
+                    }
+                    Err(err) => {
+                        self.status = Some(format!("Export failed: {err}"));
+                    }
+                }
+            }
+        } else {
+            self.status = Some(format!("Unknown command: {command}"));
+        }
+        Ok(())
     }
 }
 

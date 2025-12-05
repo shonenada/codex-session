@@ -20,5 +20,6 @@ uuid = { version = "1", features = ["serde", "v4", "v7"] }
 walkdir = "2.5"
 time = { version = "0.3", features = ["macros", "formatting", "parsing"] }
 crossterm = "0.28"
+printpdf = "0.7"
 
 codex-protocol = { path = "../codex/codex-rs/protocol" }

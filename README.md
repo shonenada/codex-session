@@ -7,6 +7,7 @@ A lightweight companion CLI for [OpenAI Codex](../codex) that lets you browse, r
 - 🚀 Launches into a full-screen TUI by default: select with arrow keys or `j`/`k`, filter live with `/`, resume with `Enter`.
 - 🔎 Searches every session under `~/.codex` (or a custom `CODEX_HOME`).
 - 🗑️ Deletes the highlighted session via `dd`, with a confirmation dialog.
+- 📤 Command mode (`:`) supports `:export <file>` to save the current session's chat history (use `.jsonl` for the raw rollout, `.json` for a structured history list, `.pdf` for a rendered PDF transcript).
 - 🧰 Fall back to subcommands (`list`, `resume`, `info`, `delete`) for scripting or automation.
 
 ## Getting Started
@@ -41,6 +42,8 @@ Environment variables:
 | `/`            | Start filtering (type to search)      |
 | `Enter`        | Resume the highlighted session        |
 | `dd`           | Delete highlighted session (confirm)  |
+| `:`            | Enter command mode (`:export file`)   |
+| `Ctrl+C`       | Quit immediately                      |
 | `Esc` / `q`    | Exit current mode / quit               |
 
 ## Development
