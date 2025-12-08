@@ -3,14 +3,17 @@ name: Release
 on:
   push:
     tags:
-      - "**"
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,10 +31,18 @@ jobs:
       - name: Build release binary
         run: cargo build --release
 
+      - name: Prepare asset
+        run: |
+          OS_NAME=$(echo "${{ runner.os }}" | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          ASSET_NAME="codex-session-${OS_NAME}-${ARCH}"
+          mv target/release/codex-session "${ASSET_NAME}"
+          echo "ASSET_NAME=${ASSET_NAME}" >> $GITHUB_ENV
+
       - name: Upload release asset
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/codex-session
+          files: ${{ env.ASSET_NAME }}
           name: codex-session ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
         env:
