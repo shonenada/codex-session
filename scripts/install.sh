@@ -27,19 +27,33 @@ else
 fi
 
 echo "Fetching release metadata from ${API_URL}..."
-DOWNLOAD_URL=$(python3 - <<PY
-import json, sys, urllib.request
+DOWNLOAD_URL=$(python3 - "${API_URL}" "${ASSET_NAME}" <<'PY'
+import json
+import sys
+import urllib.request
+
+if len(sys.argv) < 3:
+    sys.exit("Usage: script <api> <asset_name>")
+
 api = sys.argv[1]
 asset_name = sys.argv[2]
+
 with urllib.request.urlopen(api) as resp:
     data = json.load(resp)
-for asset in data.get("assets", []):
+
+assets = data.get("assets", [])
+if not assets:
+    sys.exit("No assets found in release metadata")
+
+for asset in assets:
     if asset.get("name") == asset_name:
         print(asset["browser_download_url"])
         sys.exit(0)
-sys.exit("Asset %s not found" % asset_name)
+
+available = [a.get("name") for a in assets if a.get("name")]
+sys.exit(f"Asset {asset_name} not found. Available assets: {available}")
 PY
-"${API_URL}" "${ASSET_NAME}")
+)
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
