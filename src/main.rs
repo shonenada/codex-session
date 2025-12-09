@@ -51,8 +51,16 @@ fn run_interactive(codex_home: &Path, codex_bin: &str) -> Result<()> {
                 println!("Resuming session {}", summary.id.cyan());
                 resume_session(codex_bin, &summary.id)?;
             }
-            TuiOutcome::Jump(path) => {
-                start_shell_in_dir(&path)?;
+            TuiOutcome::Jump(summary) => {
+                if let Some(cwd) = summary.cwd.as_ref() {
+                    std::env::set_current_dir(cwd)
+                        .with_context(|| format!("failed to cd to {}", cwd.display()))?;
+                    println!("Changed directory to {}", cwd.display());
+                } else {
+                    println!("No CWD recorded; staying in current directory");
+                }
+                println!("Resuming session {}", summary.id.cyan());
+                resume_session(codex_bin, &summary.id)?;
             }
         }
     }
@@ -334,19 +342,6 @@ pub(crate) fn truncate_left(text: &str, max_chars: usize) -> String {
         let tail: String = chars[tail_start..].iter().collect();
         format!("…{tail}")
     }
-}
-
-fn start_shell_in_dir(dir: &Path) -> Result<()> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| String::from("/bin/sh"));
-    println!("Opening shell in {} (exit to return)...", dir.display());
-    let status = ProcessCommand::new(&shell)
-        .current_dir(dir)
-        .status()
-        .with_context(|| format!("failed to launch shell {shell}"))?;
-    if !status.success() {
-        bail!("shell exited with status {status}");
-    }
-    Ok(())
 }
 
 fn resume_session(codex_bin: &str, session_id: &str) -> Result<()> {

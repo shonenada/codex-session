@@ -21,7 +21,7 @@ const DELETE_SEQUENCE_TIMEOUT: Duration = Duration::from_millis(600);
 
 pub enum TuiOutcome {
     Resume(SessionSummary),
-    Jump(PathBuf),
+    Jump(SessionSummary),
 }
 
 pub fn run(sessions: Vec<SessionSummary>) -> Result<Option<TuiOutcome>> {
@@ -92,7 +92,7 @@ enum AppAction {
     None,
     Quit,
     Resume(SessionSummary),
-    Jump(PathBuf),
+    Jump(SessionSummary),
 }
 
 impl App {
@@ -234,7 +234,7 @@ impl App {
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "(unknown)".to_string());
                 format!(
-                    "Session: {}\nCWD: {}\n\nPress r to resume, j to open a shell here, Esc to cancel.",
+                    "Session: {}\nCWD: {}\n\nPress r to resume, j to cd+resume, Esc to cancel.",
                     session.id, cwd
                 )
             } else {
@@ -374,9 +374,9 @@ impl App {
             }
             KeyCode::Char('j') => {
                 if let Some(session) = self.current_session().cloned() {
-                    if let Some(cwd) = session.cwd.clone() {
+                    if session.cwd.is_some() {
                         self.mode = Mode::Normal;
-                        return Ok(AppAction::Jump(cwd));
+                        return Ok(AppAction::Jump(session));
                     }
                     self.status = Some(String::from("No CWD recorded for this session"));
                     self.mode = Mode::Normal;
