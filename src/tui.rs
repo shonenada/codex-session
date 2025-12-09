@@ -19,7 +19,12 @@ use crate::session_store::{SessionSummary, export_session_chat};
 
 const DELETE_SEQUENCE_TIMEOUT: Duration = Duration::from_millis(600);
 
-pub fn run(sessions: Vec<SessionSummary>) -> Result<Option<SessionSummary>> {
+pub enum TuiOutcome {
+    Resume(SessionSummary),
+    Jump(PathBuf),
+}
+
+pub fn run(sessions: Vec<SessionSummary>) -> Result<Option<TuiOutcome>> {
     if sessions.is_empty() {
         println!("No Codex sessions recorded yet. Start a session to manage history.");
         return Ok(None);
@@ -43,7 +48,11 @@ pub fn run(sessions: Vec<SessionSummary>) -> Result<Option<SessionSummary>> {
                     AppAction::None => {}
                     AppAction::Quit => break,
                     AppAction::Resume(summary) => {
-                        outcome = Some(summary);
+                        outcome = Some(TuiOutcome::Resume(summary));
+                        break;
+                    }
+                    AppAction::Jump(path) => {
+                        outcome = Some(TuiOutcome::Jump(path));
                         break;
                     }
                 },
@@ -64,6 +73,7 @@ enum Mode {
     Normal,
     Search,
     Command,
+    ActionPrompt,
     ConfirmDelete,
 }
 
@@ -82,6 +92,7 @@ enum AppAction {
     None,
     Quit,
     Resume(SessionSummary),
+    Jump(PathBuf),
 }
 
 impl App {
@@ -214,7 +225,29 @@ impl App {
             frame.render_widget(Line::from(status.to_string()), layout[3]);
         }
 
-        if self.mode == Mode::ConfirmDelete {
+        if self.mode == Mode::ActionPrompt {
+            let area = centered_rect(70, 25, frame.area());
+            let text = if let Some(session) = self.current_session() {
+                let cwd = session
+                    .cwd
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(unknown)".to_string());
+                format!(
+                    "Session: {}\nCWD: {}\n\nPress r to resume, j to open a shell here, Esc to cancel.",
+                    session.id, cwd
+                )
+            } else {
+                "No session selected".to_string()
+            };
+            let block = Paragraph::new(text).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Select action"),
+            );
+            frame.render_widget(Clear, area);
+            frame.render_widget(block, area);
+        } else if self.mode == Mode::ConfirmDelete {
             let area = centered_rect(60, 20, frame.area());
             let session = self.current_session();
             let text = format!(
@@ -242,6 +275,7 @@ impl App {
             Mode::Normal => self.handle_normal_mode(key),
             Mode::Search => self.handle_search_mode(key),
             Mode::Command => self.handle_command_mode(key),
+            Mode::ActionPrompt => self.handle_action_prompt(key),
             Mode::ConfirmDelete => self.handle_confirm_mode(key),
         }
     }
@@ -270,8 +304,8 @@ impl App {
                 Ok(AppAction::None)
             }
             KeyCode::Enter => {
-                if let Some(session) = self.current_session() {
-                    return Ok(AppAction::Resume(session.clone()));
+                if self.current_session().is_some() {
+                    self.mode = Mode::ActionPrompt;
                 }
                 Ok(AppAction::None)
             }
@@ -322,6 +356,32 @@ impl App {
             }
             KeyCode::Down => self.move_selection_down(),
             KeyCode::Up => self.move_selection_up(),
+            _ => {}
+        }
+        Ok(AppAction::None)
+    }
+
+    fn handle_action_prompt(&mut self, key: KeyEvent) -> Result<AppAction> {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('n') => {
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Char('r') => {
+                if let Some(session) = self.current_session().cloned() {
+                    self.mode = Mode::Normal;
+                    return Ok(AppAction::Resume(session));
+                }
+            }
+            KeyCode::Char('j') => {
+                if let Some(session) = self.current_session().cloned() {
+                    if let Some(cwd) = session.cwd.clone() {
+                        self.mode = Mode::Normal;
+                        return Ok(AppAction::Jump(cwd));
+                    }
+                    self.status = Some(String::from("No CWD recorded for this session"));
+                    self.mode = Mode::Normal;
+                }
+            }
             _ => {}
         }
         Ok(AppAction::None)

@@ -48,7 +48,7 @@ Environment variables:
 | `↑` / `k`      | Move selection up                     |
 | `↓` / `j`      | Move selection down                   |
 | `/`            | Start filtering (type to search)      |
-| `Enter`        | Resume the highlighted session        |
+| `Enter`        | Open action dialog (resume or open shell in session CWD) |
 | `dd`           | Delete highlighted session (confirm)  |
 | `:`            | Enter command mode (`:export file`)   |
 | `Ctrl+C`       | Quit immediately                      |

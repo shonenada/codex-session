@@ -19,7 +19,7 @@ use session_store::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
-use tui::run as run_tui;
+use tui::{TuiOutcome, run as run_tui};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -45,9 +45,16 @@ fn run_interactive(codex_home: &Path, codex_bin: &str) -> Result<()> {
         cwd_filter: None,
     };
     let list = list_sessions(codex_home, &opts)?;
-    if let Some(summary) = run_tui(list.sessions)? {
-        println!("Resuming session {}", summary.id.cyan());
-        resume_session(codex_bin, &summary.id)?;
+    if let Some(outcome) = run_tui(list.sessions)? {
+        match outcome {
+            TuiOutcome::Resume(summary) => {
+                println!("Resuming session {}", summary.id.cyan());
+                resume_session(codex_bin, &summary.id)?;
+            }
+            TuiOutcome::Jump(path) => {
+                start_shell_in_dir(&path)?;
+            }
+        }
     }
     Ok(())
 }
@@ -327,6 +334,19 @@ pub(crate) fn truncate_left(text: &str, max_chars: usize) -> String {
         let tail: String = chars[tail_start..].iter().collect();
         format!("…{tail}")
     }
+}
+
+fn start_shell_in_dir(dir: &Path) -> Result<()> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| String::from("/bin/sh"));
+    println!("Opening shell in {} (exit to return)...", dir.display());
+    let status = ProcessCommand::new(&shell)
+        .current_dir(dir)
+        .status()
+        .with_context(|| format!("failed to launch shell {shell}"))?;
+    if !status.success() {
+        bail!("shell exited with status {status}");
+    }
+    Ok(())
 }
 
 fn resume_session(codex_bin: &str, session_id: &str) -> Result<()> {
