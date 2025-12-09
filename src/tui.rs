@@ -234,7 +234,7 @@ impl App {
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "(unknown)".to_string());
                 format!(
-                    "Session: {}\nCWD: {}\n\nPress r to resume, j to cd+resume, Esc to cancel.",
+                    "Session: {}\nCWD: {}\n\n[r] Resume here\n[j] Jump to session folder then resume\n[Esc] Cancel",
                     session.id, cwd
                 )
             } else {
@@ -243,7 +243,7 @@ impl App {
             let block = Paragraph::new(text).block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Select action"),
+                    .title("Choose what to do with this session"),
             );
             frame.render_widget(Clear, area);
             frame.render_widget(block, area);
