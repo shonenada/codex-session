@@ -19,7 +19,7 @@ use session_store::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
-use tui::run as run_tui;
+use tui::{TuiOutcome, run as run_tui};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -45,9 +45,24 @@ fn run_interactive(codex_home: &Path, codex_bin: &str) -> Result<()> {
         cwd_filter: None,
     };
     let list = list_sessions(codex_home, &opts)?;
-    if let Some(summary) = run_tui(list.sessions)? {
-        println!("Resuming session {}", summary.id.cyan());
-        resume_session(codex_bin, &summary.id)?;
+    if let Some(outcome) = run_tui(list.sessions)? {
+        match outcome {
+            TuiOutcome::Resume(summary) => {
+                println!("Resuming session {}", summary.id.cyan());
+                resume_session(codex_bin, &summary.id)?;
+            }
+            TuiOutcome::Jump(summary) => {
+                if let Some(cwd) = summary.cwd.as_ref() {
+                    std::env::set_current_dir(cwd)
+                        .with_context(|| format!("failed to cd to {}", cwd.display()))?;
+                    println!("Changed directory to {}", cwd.display());
+                } else {
+                    println!("No CWD recorded; staying in current directory");
+                }
+                println!("Resuming session {}", summary.id.cyan());
+                resume_session(codex_bin, &summary.id)?;
+            }
+        }
     }
     Ok(())
 }

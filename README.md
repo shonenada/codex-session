@@ -16,6 +16,14 @@ A lightweight companion CLI for [OpenAI Codex](../codex) that lets you browse, r
 cargo run --release
 ```
 
+Or install a prebuilt binary from GitHub Releases (macOS/Linux):
+
+```bash
+curl -sSL https://github.com/shonenada/codex-session/raw/refs/heads/main/scripts/install.sh | bash
+# or pin a tag
+VERSION=v0.0.3 curl -sSL https://github.com/shonenada/codex-session/raw/refs/heads/main/scripts/install.sh | bash
+```
+
 The default command launches the TUI. Use the flags below to fine-tune behavior (e.g. resume non-interactively or target a specific Codex binary):
 
 ```bash
@@ -40,7 +48,7 @@ Environment variables:
 | `↑` / `k`      | Move selection up                     |
 | `↓` / `j`      | Move selection down                   |
 | `/`            | Start filtering (type to search)      |
-| `Enter`        | Resume the highlighted session        |
+| `Enter`        | Open action dialog (resume or open shell in session CWD) |
 | `dd`           | Delete highlighted session (confirm)  |
 | `:`            | Enter command mode (`:export file`)   |
 | `Ctrl+C`       | Quit immediately                      |
