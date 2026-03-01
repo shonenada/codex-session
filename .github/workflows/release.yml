@@ -19,7 +19,7 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: codex-session-darwin-arm64.tar.gz
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: codex-session-darwin-x86_64.tar.gz
     runs-on: ${{ matrix.os }}
