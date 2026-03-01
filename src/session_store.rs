@@ -200,7 +200,7 @@ pub fn load_session_detail(_codex_home: &Path, path: &Path) -> Result<SessionDet
         git_branch: summary.git_branch.clone(),
         instructions: meta
             .as_ref()
-            .and_then(|line| line.meta.instructions.clone()),
+            .and_then(|line| line.meta.base_instructions.as_ref().map(|bi| bi.text.clone())),
         source: meta.as_ref().map(|line| line.meta.source.clone()),
         summary,
         meta,
